@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pastefy Uploader</title>
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1d2026;
+    --line: #2d323b;
+    --text: #e8eaee;
+    --muted: #8b93a1;
+    --accent: #5eb8ff;
+    --ok: #4ade80;
+    --err: #ff6b6b;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans Thai", sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 20px 14px;
+  }
+  main { width: 100%; max-width: 520px; }
+  h1 { font-size: 1.35rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: .9rem; margin: 0 0 20px; }
+  section {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 6px; }
+  input[type=text], input[type=password], select {
+    width: 100%;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 1rem;
+  }
+  input:focus-visible, select:focus-visible, button:focus-visible, .drop:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .row { display: flex; gap: 8px; }
+  .row > input { flex: 1; min-width: 0; }
+  button {
+    background: var(--accent);
+    color: #08131c;
+    border: 0;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); font-weight: 500; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .drop {
+    border: 2px dashed var(--line);
+    border-radius: 10px;
+    padding: 26px 12px;
+    text-align: center;
+    color: var(--muted);
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .drop.over { border-color: var(--accent); background: rgba(94,184,255,.07); }
+  .drop strong { color: var(--text); display: block; word-break: break-all; }
+  .field { margin-bottom: 12px; }
+  .hint { font-size: .8rem; color: var(--muted); margin-top: 6px; }
+  #status { font-size: .92rem; min-height: 1.3em; margin-top: 12px; }
+  #status.ok { color: var(--ok); }
+  #status.err { color: var(--err); }
+  .result { margin-top: 10px; display: none; }
+  .result a { color: var(--accent); word-break: break-all; }
+  .result .row { margin-top: 8px; }
+  pre#preview {
+    margin: 12px 0 0;
+    max-height: 140px;
+    overflow: auto;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px;
+    font-size: .8rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+    display: none;
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Pastefy Uploader</h1>
+  <p class="sub">เลือกไฟล์แล้วอัพโหลดขึ้น pastefy.app ด้วย API key ของคุณ</p>
+
+  <section>
+    <label for="apiKey">API Key</label>
+    <div class="row">
+      <input type="password" id="apiKey" placeholder="วาง API key ที่นี่" autocomplete="off" spellcheck="false">
+      <button type="button" class="ghost" id="toggleKey" aria-label="แสดงหรือซ่อน API key">แสดง</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button type="button" id="saveKey">บันทึก</button>
+      <button type="button" class="ghost" id="clearKey">ลบ key</button>
+    </div>
+    <div class="hint" id="keyState"></div>
+  </section>
+
+  <section>
+    <div class="field">
+      <div class="drop" id="drop" tabindex="0" role="button" aria-label="เลือกไฟล์">
+        <span id="dropText">แตะเพื่อเลือกไฟล์ หรือวางไฟล์ลงที่นี่</span>
+      </div>
+      <input type="file" id="file" hidden>
+    </div>
+
+    <div class="field">
+      <label for="title">ชื่อ paste</label>
+      <input type="text" id="title" placeholder="ใช้ชื่อไฟล์ถ้าเว้นว่าง">
+    </div>
+
+    <div class="field">
+      <label for="visibility">การมองเห็น</label>
+      <select id="visibility">
+        <option value="UNLISTED">Unlisted (มีลิงก์เท่านั้น)</option>
+        <option value="PUBLIC">Public</option>
+        <option value="PRIVATE">Private</option>
+      </select>
+    </div>
+
+    <button type="button" id="upload" disabled style="width:100%">อัพโหลด</button>
+    <div id="status" role="status" aria-live="polite"></div>
+
+    <div class="result" id="result">
+      <a id="link" target="_blank" rel="noopener"></a>
+      <div class="row">
+        <button type="button" class="ghost" id="copy">คัดลอกลิงก์</button>
+        <button type="button" class="ghost" id="open">เปิด</button>
+      </div>
+    </div>
+    <pre id="preview"></pre>
+  </section>
+</main>
+
+<script>
+(function () {
+  var API = "https://pastefy.app/api/v2/paste";
+  var COOKIE = "pastefy_api_key";
+  var MAX_BYTES = 2 * 1024 * 1024; // กันไฟล์ใหญ่เกินไป (2 MB)
+
+  var $ = function (id) { return document.getElementById(id); };
+  var keyInput = $("apiKey"), fileInput = $("file"), drop = $("drop");
+  var uploadBtn = $("upload"), statusEl = $("status");
+  var currentFile = null, lastUrl = "";
+
+  /* ---------- Cookie ---------- */
+  function setCookie(name, value, days) {
+    var d = new Date(); d.setTime(d.getTime() + days * 864e5);
+    var secure = location.protocol === "https:" ? ";Secure" : "";
+    document.cookie = name + "=" + encodeURIComponent(value) +
+      ";expires=" + d.toUTCString() + ";path=/;SameSite=Strict" + secure;
+  }
+  function getCookie(name) {
+    var parts = document.cookie.split(";");
+    for (var i = 0; i < parts.length; i++) {
+      var p = parts[i].trim();
+      if (p.indexOf(name + "=") === 0) return decodeURIComponent(p.slice(name.length + 1));
+    }
+    return "";
+  }
+  function deleteCookie(name) {
+    document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+  }
+
+  // ถ้าเบราว์เซอร์ไม่รับคุกกี้ (เช่นเปิดจาก file://) ใช้ localStorage แทน
+  function saveKey(v) {
+    setCookie(COOKIE, v, 365);
+    if (getCookie(COOKIE) === v) return "cookie";
+    try { localStorage.setItem(COOKIE, v); return "local"; } catch (e) { return ""; }
+  }
+  function loadKey() {
+    var v = getCookie(COOKIE);
+    if (v) return v;
+    try { return localStorage.getItem(COOKIE) || ""; } catch (e) { return ""; }
+  }
+  function removeKey() {
+    deleteCookie(COOKIE);
+    try { localStorage.removeItem(COOKIE); } catch (e) {}
+  }
+
+  /* ---------- UI helpers ---------- */
+  function setStatus(msg, type) {
+    statusEl.textContent = msg;
+    statusEl.className = type || "";
+  }
+  function refreshState() {
+    uploadBtn.disabled = !(currentFile && keyInput.value.trim());
+  }
+
+  /* ---------- API key ---------- */
+  var saved = loadKey();
+  if (saved) {
+    keyInput.value = saved;
+    $("keyState").textContent = "โหลด API key ที่บันทึกไว้แล้ว";
+  }
+  $("saveKey").onclick = function () {
+    var v = keyInput.value.trim();
+    if (!v) { $("keyState").textContent = "กรอก API key ก่อน"; return; }
+    var where = saveKey(v);
+    $("keyState").textContent = where === "cookie" ? "บันทึกลงคุกกี้แล้ว"
+      : where === "local" ? "เบราว์เซอร์ไม่รับคุกกี้ในหน้านี้ จึงบันทึกลงที่เก็บข้อมูลในเครื่องแทน"
+      : "บันทึกไม่ได้";
+    refreshState();
+  };
+  $("clearKey").onclick = function () {
+    removeKey(); keyInput.value = "";
+    $("keyState").textContent = "ลบ API key แล้ว";
+    refreshState();
+  };
+  $("toggleKey").onclick = function () {
+    var show = keyInput.type === "password";
+    keyInput.type = show ? "text" : "password";
+    this.textContent = show ? "ซ่อน" : "แสดง";
+  };
+  keyInput.addEventListener("input", refreshState);
+
+  /* ---------- File picking ---------- */
+  function pickFile(f) {
+    if (!f) return;
+    if (f.size > MAX_BYTES) {
+      currentFile = null;
+      setStatus("ไฟล์ใหญ่เกิน 2 MB เลือกไฟล์ที่เล็กกว่านี้", "err");
+      refreshState(); return;
+    }
+    currentFile = f;
+    $("dropText").innerHTML = "";
+    var s = document.createElement("strong");
+    s.textContent = f.name;
+    $("dropText").appendChild(s);
+    $("dropText").appendChild(document.createTextNode((f.size / 1024).toFixed(1) + " KB"));
+    setStatus("", "");
+    $("result").style.display = "none";
+    refreshState();
+  }
+  drop.onclick = function () { fileInput.click(); };
+  drop.onkeydown = function (e) {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); }
+  };
+  fileInput.onchange = function () { pickFile(fileInput.files[0]); };
+  ["dragenter", "dragover"].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add("over"); });
+  });
+  ["dragleave", "drop"].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove("over"); });
+  });
+  drop.addEventListener("drop", function (e) { pickFile(e.dataTransfer.files[0]); });
+
+  /* ---------- Upload ---------- */
+  uploadBtn.onclick = async function () {
+    var key = keyInput.value.trim();
+    if (!currentFile || !key) return;
+    uploadBtn.disabled = true;
+    setStatus("กำลังอัพโหลด...", "");
+    $("result").style.display = "none";
+    try {
+      var content = await currentFile.text();
+      var res = await fetch(API, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + key
+        },
+        body: JSON.stringify({
+          type: "PASTE",
+          title: $("title").value.trim() || currentFile.name,
+          content: content,
+          visibility: $("visibility").value,
+          encrypted: false
+        })
+      });
+      var data = null;
+      try { data = await res.json(); } catch (e) {}
+      if (!res.ok || (data && data.success === false)) {
+        var msg = (data && (data.exception || data.message || data.error)) || ("HTTP " + res.status);
+        throw new Error(res.status === 401 ? "API key ไม่ถูกต้องหรือหมดอายุ (" + msg + ")" : msg);
+      }
+      var id = data && data.paste && data.paste.id;
+      if (!id) throw new Error("ไม่พบ id ในคำตอบจากเซิร์ฟเวอร์");
+      lastUrl = "https://pastefy.app/" + id;
+      $("link").href = lastUrl;
+      $("link").textContent = lastUrl;
+      $("result").style.display = "block";
+      setStatus("อัพโหลดสำเร็จ", "ok");
+      var pv = $("preview");
+      pv.textContent = content.slice(0, 600) + (content.length > 600 ? "\n..." : "");
+      pv.style.display = "block";
+    } catch (err) {
+      var m = err && err.message ? err.message : String(err);
+      if (m === "Failed to fetch") m = "เชื่อมต่อ pastefy.app ไม่ได้ (เช็กอินเทอร์เน็ต หรือเบราว์เซอร์บล็อกคำขอข้ามโดเมน)";
+      setStatus("อัพโหลดไม่สำเร็จ: " + m, "err");
+    } finally {
+      refreshState();
+    }
+  };
+
+  $("copy").onclick = function () {
+    if (!lastUrl) return;
+    var btn = this;
+    (navigator.clipboard ? navigator.clipboard.writeText(lastUrl) : Promise.reject())
+      .then(function () { btn.textContent = "คัดลอกแล้ว"; setTimeout(function () { btn.textContent = "คัดลอกลิงก์"; }, 1500); })
+      .catch(function () { window.prompt("คัดลอกลิงก์นี้", lastUrl); });
+  };
+  $("open").onclick = function () { if (lastUrl) window.open(lastUrl, "_blank", "noopener"); };
+
+  refreshState();
+})();
+</script>
+</body>
+</html>
